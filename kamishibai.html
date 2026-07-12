@@ -96,7 +96,8 @@ body.noruby rt { display:none; }
 
 <div id="home">
   <h2>紙芝居朗読ライブラリ</h2>
-  <div class="lead">青空文庫の名短編 16作 ・ 挿絵と朗読つき ・ 作品を選んでください</div>
+  <div class="lead">青空文庫の名短編 16作 ・ 挿絵と朗読つき ・ 作品を選んでください<br>
+  <span style="opacity:.75">収録音声: VOICEVOX（青山龍星）</span></div>
   <div id="grid"></div>
 </div>
 
@@ -122,8 +123,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function voices() {
   return synth ? synth.getVoices().filter(v => v.lang && v.lang.startsWith('ja')) : [];
 }
+let recAvail = false, curA = null;
+function addRecOption() {
+  const sel = $('#voice');
+  if (sel.querySelector('option[value="__rec__"]')) return;
+  const o = document.createElement('option');
+  o.value = '__rec__'; o.textContent = '収録音声（VOICEVOX 青山龍星）';
+  sel.insertBefore(o, sel.firstChild);
+  sel.value = '__rec__';
+  $('#rate').value = 1.0;
+}
+function cancelAudio() { if (curA) { try { curA.pause(); } catch (e) {} curA = null; } }
 function fillVoices() {
-  const sel = $('#voice'); const v = voices();
+  const sel = $('#voice'); const keep = sel.value; const v = voices();
   sel.innerHTML = v.length ? '' : '<option>日本語音声なし</option>';
   const rank = n => /o.?ren/i.test(n) ? 0 : /otoya/i.test(n) ? 1 : /kyoko/i.test(n) ? 2 : 3;
   v.sort((a, b) => rank(a.name) - rank(b.name));
@@ -132,8 +144,12 @@ function fillVoices() {
     o.value = vo.name; o.textContent = vo.name; if (i === 0) o.selected = true;
     sel.appendChild(o);
   });
+  if (recAvail) { addRecOption(); if (keep && keep !== '__rec__') sel.value = keep; }
 }
 if (synth) { fillVoices(); synth.onvoiceschanged = fillVoices; }
+fetch('audio/manifest.json').then(r => r.ok ? r.json() : null).then(m => {
+  if (m && m.works && m.works.length) { recAvail = true; addRecOption(); }
+}).catch(() => {});
 
 /* ---------- 一覧 ---------- */
 function renderHome() {
@@ -173,7 +189,7 @@ function openWork(i, autoplay) {
   const dots = $('#dots'); dots.innerHTML = '';
   W.scenes.forEach((s, j) => {
     const sp = document.createElement('span');
-    sp.title = s.t; sp.onclick = () => { token++; if (synth) synth.cancel(); render(j, true); };
+    sp.title = s.t; sp.onclick = () => { token++; if (synth) synth.cancel(); cancelAudio(); render(j, true); };
     dots.appendChild(sp);
   });
   render(0, false);
@@ -241,9 +257,22 @@ function toast(msg) {
   setTimeout(() => { t.style.display = 'none'; }, 6000);
 }
 function stopAll() {
-  playing = false; token++; if (synth) synth.cancel();
+  playing = false; token++; if (synth) synth.cancel(); cancelAudio();
   $('#play').textContent = '▶ 朗読開始';
   document.querySelectorAll('#text p').forEach(p => p.classList.remove('reading'));
+}
+function audioUrl(i, j) { return 'audio/' + W.id + '/' + i + '-' + j + '.m4a'; }
+function playFile(url, my) {
+  return new Promise(res => {
+    const a = new Audio(url);
+    curA = a;
+    a.playbackRate = +$('#rate').value;
+    a.volume = +$('#vol').value;
+    a.onended = () => res('ok');
+    a.onerror = () => res('err');
+    a.onpause = () => { if (!a.ended && (my !== token || !playing)) res('aborted'); };
+    a.play().catch(() => res('err'));
+  });
 }
 async function speakScene(i) {
   const my = ++token;
@@ -255,11 +284,23 @@ async function speakScene(i) {
     if (my !== token || !playing) return;
     paras.forEach(p => p.classList.remove('reading'));
     if (paras[j]) { paras[j].classList.add('reading'); paras[j].scrollIntoView({block: 'center'}); }
-    for (const c of chunks(sc.speech[j])) {
-      if (my !== token || !playing) return;
-      const r = await speakChunk(c, my);
+    const txt = sc.speech[j] || '';
+    let ttsFallback = true;
+    if (txt.trim() && recAvail && $('#voice').value === '__rec__') {
+      if (j + 1 < sc.speech.length && (sc.speech[j + 1] || '').trim()) {
+        const pre = new Audio(); pre.preload = 'auto'; pre.src = audioUrl(i, j + 1);
+      }
+      const r = await playFile(audioUrl(i, j), my);
       if (r === 'aborted') return;
-      if (r === 'dead') { stopAll(); $('#play').textContent = '▶ 再開'; toast('音声が停止しました。▶ 再開 を押してください'); return; }
+      ttsFallback = (r === 'err');
+    }
+    if (txt.trim() && ttsFallback) {
+      for (const c of chunks(txt)) {
+        if (my !== token || !playing) return;
+        const r = await speakChunk(c, my);
+        if (r === 'aborted') return;
+        if (r === 'dead') { stopAll(); $('#play').textContent = '▶ 再開'; toast('音声が停止しました。▶ 再開 を押してください'); return; }
+      }
     }
     await sleep(280);
   }
@@ -278,16 +319,16 @@ setInterval(() => { if (playing && synth && synth.speaking) { try { synth.resume
 
 /* ---------- 操作 ---------- */
 $('#play').onclick = () => {
-  if (!synth) { toast('このブラウザは音声合成に対応していません'); return; }
+  if (!synth && !recAvail) { toast('このブラウザは音声再生に対応していません'); return; }
   if (playing) { stopAll(); return; }
   playing = true; $('#play').textContent = '⏸ 一時停止';
-  synth.cancel();
+  if (synth) synth.cancel(); cancelAudio();
   speakScene(cur);
 };
 $('#stop').onclick = stopAll;
 $('#back').onclick = goHome;
-$('#prev').onclick = () => { if (W && cur > 0) { token++; if (synth) synth.cancel(); render(cur - 1, true); } };
-$('#next').onclick = () => { if (W && cur < W.scenes.length - 1) { token++; if (synth) synth.cancel(); render(cur + 1, true); } };
+$('#prev').onclick = () => { if (W && cur > 0) { token++; if (synth) synth.cancel(); cancelAudio(); render(cur - 1, true); } };
+$('#next').onclick = () => { if (W && cur < W.scenes.length - 1) { token++; if (synth) synth.cancel(); cancelAudio(); render(cur + 1, true); } };
 $('#ruby').onchange = e => document.body.classList.toggle('noruby', !e.target.checked);
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
