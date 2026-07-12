@@ -97,7 +97,7 @@ body.noruby rt { display:none; }
 <div id="home">
   <h2>紙芝居朗読ライブラリ</h2>
   <div class="lead">青空文庫の名短編 16作 ・ 挿絵と朗読つき ・ 作品を選んでください<br>
-  <span style="opacity:.75">収録音声: VOICEVOX（青山龍星）</span></div>
+  <span style="opacity:.75">収録音声: VOICEVOX（雀松朱司・九州そら・青山龍星）／ <a href="voices.html" style="color:#d4915e">声くらべ</a></span></div>
   <div id="grid"></div>
 </div>
 
@@ -123,15 +123,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function voices() {
   return synth ? synth.getVoices().filter(v => v.lang && v.lang.startsWith('ja')) : [];
 }
-let recAvail = false, curA = null;
-function addRecOption() {
+let recVoices = [], recAvail = false, curA = null;
+function recDir() {
+  const v = $('#voice').value;
+  return v.startsWith('__rec__:') ? v.slice(8) : null;
+}
+function addRecOptions() {
   const sel = $('#voice');
-  if (sel.querySelector('option[value="__rec__"]')) return;
-  const o = document.createElement('option');
-  o.value = '__rec__'; o.textContent = '収録音声（VOICEVOX 青山龍星）';
-  sel.insertBefore(o, sel.firstChild);
-  sel.value = '__rec__';
-  $('#rate').value = 1.0;
+  let first = null;
+  [...recVoices].reverse().forEach(rv => {
+    if (sel.querySelector('option[value="__rec__:' + rv.dir + '"]')) return;
+    const o = document.createElement('option');
+    o.value = '__rec__:' + rv.dir; o.textContent = '収録音声（' + rv.name + '）';
+    sel.insertBefore(o, sel.firstChild);
+  });
+  if (recVoices.length && !recDir()) {
+    sel.value = '__rec__:' + recVoices[0].dir;
+    $('#rate').value = 1.0;
+  }
 }
 function cancelAudio() { if (curA) { try { curA.pause(); } catch (e) {} curA = null; } }
 function fillVoices() {
@@ -144,11 +153,11 @@ function fillVoices() {
     o.value = vo.name; o.textContent = vo.name; if (i === 0) o.selected = true;
     sel.appendChild(o);
   });
-  if (recAvail) { addRecOption(); if (keep && keep !== '__rec__') sel.value = keep; }
+  if (recAvail) { addRecOptions(); if (keep && keep.startsWith('__rec__')) sel.value = keep; }
 }
 if (synth) { fillVoices(); synth.onvoiceschanged = fillVoices; }
 fetch('audio/manifest.json').then(r => r.ok ? r.json() : null).then(m => {
-  if (m && m.works && m.works.length) { recAvail = true; addRecOption(); }
+  if (m && m.voices && m.voices.length) { recVoices = m.voices; recAvail = true; addRecOptions(); }
 }).catch(() => {});
 
 /* ---------- 一覧 ---------- */
@@ -261,7 +270,7 @@ function stopAll() {
   $('#play').textContent = '▶ 朗読開始';
   document.querySelectorAll('#text p').forEach(p => p.classList.remove('reading'));
 }
-function audioUrl(i, j) { return 'audio/' + W.id + '/' + i + '-' + j + '.m4a'; }
+function audioUrl(i, j) { return 'audio/' + recDir() + '/' + W.id + '/' + i + '-' + j + '.m4a'; }
 function playFile(url, my) {
   return new Promise(res => {
     const a = new Audio(url);
@@ -286,7 +295,7 @@ async function speakScene(i) {
     if (paras[j]) { paras[j].classList.add('reading'); paras[j].scrollIntoView({block: 'center'}); }
     const txt = sc.speech[j] || '';
     let ttsFallback = true;
-    if (txt.trim() && recAvail && $('#voice').value === '__rec__') {
+    if (txt.trim() && recAvail && recDir()) {
       if (j + 1 < sc.speech.length && (sc.speech[j + 1] || '').trim()) {
         const pre = new Audio(); pre.preload = 'auto'; pre.src = audioUrl(i, j + 1);
       }
