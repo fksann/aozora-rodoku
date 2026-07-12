@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>朗読の声 くらべ — 紙芝居朗読ライブラリ</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#221b13; color:#e8dcc8; font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
+  min-height:100dvh; padding:34px 18px 60px; }
+h1 { text-align:center; font-size:21px; letter-spacing:5px; margin-bottom:6px; }
+.lead { text-align:center; color:#9a8a70; font-size:12.5px; margin-bottom:8px;
+  font-family:-apple-system,"Hiragino Sans",sans-serif; }
+.passage { max-width:600px; margin:0 auto 26px; color:#b8a888; font-size:13px; line-height:1.9;
+  border:1px solid #4a3b28; border-radius:10px; padding:12px 18px; background:#191410; }
+.grid { max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:12px; }
+.v { display:flex; align-items:center; gap:14px; background:#191410; border:1px solid #4a3b28;
+  border-radius:12px; padding:14px 18px; }
+.v.current { border-color:#c4552d; }
+.v button { width:52px; height:52px; border-radius:50%; border:none; background:#c4552d; color:#fff;
+  font-size:19px; cursor:pointer; flex:none; }
+.v .n { font-size:16.5px; letter-spacing:1px; }
+.v .d { font-size:12px; color:#9a8a70; margin-top:3px; font-family:-apple-system,"Hiragino Sans",sans-serif; }
+.v .tag { font-size:10.5px; color:#c4552d; border:1px solid #c4552d; border-radius:8px;
+  padding:1px 8px; margin-left:8px; vertical-align:2px; font-family:-apple-system,sans-serif; }
+.foot { text-align:center; color:#7a6a54; font-size:11.5px; margin-top:30px;
+  font-family:-apple-system,"Hiragino Sans",sans-serif; }
+a { color:#d4915e; }
+</style>
+</head>
+<body>
+<h1>朗読の声 くらべ</h1>
+<div class="lead">同じ一節（「蜘蛛の糸」冒頭）を7つの声で聴き比べられます</div>
+<div class="passage">ある日の事でございます。御釈迦様は極楽の蓮池のふちを、独りでぶらぶら御歩きになっていらっしゃいました。……</div>
+<div class="grid" id="g"></div>
+<div class="foot">音声: <a href="https://voicevox.hiroshiba.jp/" target="_blank">VOICEVOX</a>（各キャラクター名）／
+<a href="kamishibai.html">← 紙芝居朗読ライブラリへ戻る</a></div>
+<script>
+const V = [
+  ["aoyama", "青山龍星", "低めの男声・現在の収録音声", true],
+  ["suzumatsu", "雀松朱司", "男声・落ち着いたアナウンサー風", false],
+  ["kurono", "玄野武宏", "男声・高め、さわやか", false],
+  ["shirakami", "白上虎太郎", "男声・さらに高め、少年寄り", false],
+  ["himari", "冥鳴ひまり", "女声・低めでしっとり", false],
+  ["sora", "九州そら", "女声・やわらかく上品", false],
+  ["sayo", "小夜", "女声・ささやくように優しい", false],
+];
+let cur = null, curSlug = null;
+const g = document.getElementById('g');
+V.forEach(([slug, name, desc, current]) => {
+  const d = document.createElement('div');
+  d.className = 'v' + (current ? ' current' : '');
+  d.innerHTML = `<button data-s="${slug}">▶</button>
+    <div><div class="n">${name}${current ? '<span class="tag">いまの声</span>' : ''}</div>
+    <div class="d">${desc}</div></div>`;
+  g.appendChild(d);
+});
+g.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const wasPlaying = curSlug === b.dataset.s;
+  if (cur) { cur.pause(); cur = null; curSlug = null;
+    document.querySelectorAll('.v button').forEach(x => x.textContent = '▶'); }
+  if (wasPlaying) return;
+  curSlug = b.dataset.s;
+  cur = new Audio('audio/samples/' + b.dataset.s + '.m4a');
+  cur.play();
+  b.textContent = '⏸';
+  cur.onended = () => { b.textContent = '▶'; cur = null; };
+});
+</script>
+</body>
+</html>
